@@ -8,4 +8,5 @@ installing (recommend using pip install)
 tensorflow or tensorflow-gpu,
 sklearn,
 matplotlib,
-keras
+keras,
+pillow
