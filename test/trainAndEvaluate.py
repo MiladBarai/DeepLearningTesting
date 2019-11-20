@@ -7,17 +7,20 @@ from tensorflow.python.keras.utils import to_categorical
 from tensorflow.python import keras
 from tensorflow.keras.callbacks import CSVLogger
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from keras.preprocessing.image import img_to_array, array_to_img
+from tensorflow.keras.applications import VGG19
 from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 import math
 import numpy
 import os
+import tensorflow
 import time
 
 # Category number to Category name list
 class_names = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
                'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
-augment_data = True
+augment_data = False
 
 
 def train_or_load_network(network, training_images, training_lables):
@@ -51,8 +54,7 @@ def train_or_load_network(network, training_images, training_lables):
             fit_and_evaluate(network, training_images[train], training_lables[train], training_images[test],
                              training_lables[test], folder, file_name)
     else:
-        print("Restoring Models from: " + folder)
-        print("Do restoring stuff ...")
+        print("Model variant has already been trained and can be found under: " + folder)
 
 
 def create_model(filter_size, dropout, padding_type, hidden_layers, use_max_pooling):
@@ -103,7 +105,7 @@ def create_model(filter_size, dropout, padding_type, hidden_layers, use_max_pool
 
 def get_one_img(index):
     (images, labels) = get_data()
-    return images[index:index+1]
+    return images[index:index + 1]
 
 
 def get_data():
@@ -223,7 +225,34 @@ def augment_training_images(training_images, training_lables):
 
     return img_result, label_result
 
-def run():
+
+def transfer_learn():
+    # Load without classification layer, with filter weights and minimum input shape
+    vgg19 = VGG19(include_top=False, weights='imagenet', input_shape=(48, 48, 3))
+
+    # Freeze all VGG19 layers
+    for layer in vgg19.layers:
+        layer.trainable = False
+
+    network = models.Sequential(name = "NN..VGG19")
+    network.add(vgg19)
+
+    # Add classification layer to the VGG19 layer
+    network.add(layers.Flatten())
+    network.add(layers.Dense(512, activation='relu'))
+    network.add(layers.Dense(10, activation='softmax'))
+    network.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+
+    # Print a network summary
+    network.summary()
+
+    # Save the starting weights
+    network.save_weights('resetting_weights.h5')
+
+    return network
+
+
+def run(transfer_learning=False):
     # Fetch formated data
     (training_images, training_labels) = get_data()
 
@@ -233,10 +262,22 @@ def run():
 
     print("Images: " + str(len(training_labels)))
 
-    # Base Model with augmentation, Parameters can be changed here!
-    network = create_model(3, 0.25, 'same', 2, True)
+    if not transfer_learning:
+        # Base Model with augmentation, Parameters can be changed here!
+        network = create_model(3, 0.25, 'same', 2, True)
+    else:
+        network = transfer_learn()
+
+        training_images = numpy.concatenate([training_images] * 3, axis= 3)
+
+        # For each image in training images, rescale to 48,48 instead of 28,28
+        training_images = numpy.asarray(
+            [img_to_array(array_to_img(image, scale=False).resize((48, 48))) for image in training_images])
+        print("training images shape: " + str(training_images.shape))
+
     train_or_load_network(network, training_images, training_labels)
 
-#Train and evaluates model
+
+# Train and evaluates model with or without transfer learning
 if __name__ == '__main__':
-    run()
+    run(True)
