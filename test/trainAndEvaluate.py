@@ -1,4 +1,5 @@
 # Import List
+from numpy.core._multiarray_umath import ndarray
 from tensorflow.python.keras import models
 from tensorflow.python.keras import layers
 from tensorflow.python.keras.datasets import fashion_mnist as mnist
@@ -16,16 +17,17 @@ import time
 # Category number to Category name list
 class_names = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
                'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
+augment_data = True
 
 
 def train_or_load_network(network, training_images, training_lables):
     print("\n\nTRAIN OR LOAD --------------------------")
 
-    #Refactoring network name since some characters where not allowed as TF name
+    # Refactoring network name since some characters where not allowed as TF name
     network_name = network.name
-    network_name = network_name.replace("..","[",1)
-    network_name = network_name.replace("_","=")
-    network_name = network_name.replace("..",",")
+    network_name = network_name.replace("..", "[", 1)
+    network_name = network_name.replace("_", "=")
+    network_name = network_name.replace("..", ",")
     network_name = network_name + "]"
 
     folder = "../resources/Deep Neural Network Training/" + network_name + "/"
@@ -49,7 +51,7 @@ def train_or_load_network(network, training_images, training_lables):
             fit_and_evaluate(network, training_images[train], training_lables[train], training_images[test],
                              training_lables[test], folder, file_name)
     else:
-        print("Restoring Models from: "+folder)
+        print("Restoring Models from: " + folder)
         print("Do restoring stuff ...")
 
 
@@ -57,7 +59,8 @@ def create_model(filter_size, dropout, padding_type, hidden_layers, use_max_pool
     print("\n\nCREATING NETWORK ------------------------")
     # Crafting a unique name for the nerual network depending on options selected
     network_name = "NN..FilterSize_" + str(filter_size) + "..DropOut_" + str(
-        dropout) + "..Padding_" + padding_type + "..DataAugmentation_" + str(augment_data)
+        dropout) + "..Padding_" + padding_type + "..DataAugmentation_" + str(
+        augment_data) + "..maxPooling_" + str(use_max_pooling)
 
     # Initialize sequencial NN
     network = models.Sequential(name=network_name)
@@ -96,6 +99,11 @@ def create_model(filter_size, dropout, padding_type, hidden_layers, use_max_pool
     network.save_weights('resetting_weights.h5')
 
     return network
+
+
+def get_one_img(index):
+    (images, labels) = get_data()
+    return images[index:index+1]
 
 
 def get_data():
@@ -161,7 +169,15 @@ def fit_and_evaluate(neural_net, train_img, train_lable, test_img, test_lable, f
     print("Saving model training progress: " + csv_file)
 
 
-def augment_training_images(training_images):
+def augment_training_images(training_images, training_lables):
+    # Init of the return variables
+    img_result = training_images
+    label_result = training_lables
+
+    # Init place to store augmented images
+    changed_images = numpy.ndarray(shape=(10000, 28, 28, 1))
+    changed_lables = numpy.ndarray(shape=(10000, 10))
+
     print("\n\nAUGMENT DATA ----------------------------")
     # Define wanted augmentations and input training data for the augmentations
     data_generator = ImageDataGenerator(horizontal_flip=True, zoom_range=[0.75, 1.25])
@@ -179,42 +195,48 @@ def augment_training_images(training_images):
 
         # Check each image in the batch
         for img_data in img_data_batch:
-            # Exit condition.
-            if index >= len(training_images):
+            # Exit condition. generate 10 000 extra images
+            if index >= 10000:
                 break
 
-            # Write back/save augmented img
-            training_images[index] = img_data
+            # Add training data and lable to the changed lable arrays
+            changed_images[index] = numpy.asarray(img_data)
+            changed_lables[index] = training_lables[index]
 
             # Add the 20 fist images to the sample list
             if index < 20:
                 change_sample.append(img_data)
 
+            if len(changed_images) % 100 == 0:
+                print("Augmentation Index reached: " + str(index + 1))
+
             # Increment the index of which img we are on at the moment
             index += 1
+
+    # Merge original and augmented
+    img_result = numpy.concatenate((img_result, changed_images))
+    label_result = numpy.concatenate((label_result, changed_lables))
 
     print("Data augmentation completed, Zoom 75%-125% and Horizontal Flip")
     # Show the saved sample
     show_changed_images(change_sample)
 
+    return img_result, label_result
 
-augment_data = False
-# Fetch formated data
-(training_images, training_lables) = get_data()
-# If Data augmentations has been selected then RANDOMLY, horizontaly_flip/mirror and zoom 25% enlargenment and normal size
-if augment_data:
-    augment_training_images(training_images)
+def run():
+    # Fetch formated data
+    (training_images, training_labels) = get_data()
 
-#Increased filter size
-network = create_model(4, 0.25, 'same', 2, True)
-train_or_load_network(network, training_images, training_lables)
+    # If Data augmentations has been selected then RANDOMLY, horizontaly_flip/mirror and zoom 25% enlargenment and normal size
+    if augment_data:
+        (training_images, training_labels) = augment_training_images(training_images, training_labels)
 
-#Different Padding!
-network = create_model(3,0.25,'valid', 2,True)
-train_or_load_network(network, training_images, training_lables)
+    print("Images: " + str(len(training_labels)))
 
-#More Hidden Layers!
-network = create_model(3,0.25,'same', 3,True)
-train_or_load_network(network, training_images, training_lables)
+    # Base Model with augmentation, Parameters can be changed here!
+    network = create_model(3, 0.25, 'same', 2, True)
+    train_or_load_network(network, training_images, training_labels)
 
-
+#Train and evaluates model
+if __name__ == '__main__':
+    run()
